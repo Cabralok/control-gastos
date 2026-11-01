@@ -1,0 +1,86 @@
+function doGet(e) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const data = sheet.getDataRange().getValues();
+  
+  let incomes = [];
+  let expenses = [];
+  
+  for (let i = 3; i < data.length; i++) {
+    const estado = data[i][2];          // Columna C: Estado (A PAGAR / PAGADO)
+    const conceptoGasto = data[i][3];  // Columna D: Gasto
+    const montoGasto = data[i][4];     // Columna E: Monto Gasto
+    
+    const conceptoIngreso = data[i][5];// Columna F: Ingreso
+    const montoIngreso = data[i][6];   // Columna G: Monto Ingreso
+    
+    if (conceptoGasto && montoGasto !== "" && montoGasto !== undefined) {
+      expenses.push({ id: i + 1, name: conceptoGasto, amount: Number(montoGasto) || 0, status: estado });
+    }
+    
+    if (conceptoIngreso && montoIngreso !== "" && montoIngreso !== undefined) {
+      incomes.push({ id: i + 1, name: conceptoIngreso, amount: Number(montoIngreso) || 0 });
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({ incomes, expenses }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    const contents = JSON.parse(e.postData.contents);
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const action = contents.action;
+    
+    // 1. Agregar nuevo gasto (Crea celdas/filas nuevas)
+    if (action === 'addExpense') {
+      const lastRow = sheet.getLastRow();
+      const targetRow = lastRow + 1;
+      
+      // Escribe la fecha actual, estado "A PAGAR", concepto y monto en la nueva fila
+      const hoy = Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "dd-MMM-yyyy");
+      sheet.getRange(targetRow, 2).setValue(hoy);          // Columna B: Fecha
+      sheet.getRange(targetRow, 3).setValue('A PAGAR');     // Columna C: Estado
+      sheet.getRange(targetRow, 4).setValue(contents.name); // Columna D: Concepto
+      sheet.getRange(targetRow, 5).setValue(contents.amount);// Columna E: Monto
+      
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', row: targetRow }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // 2. Agregar nuevo ingreso (Crea celdas/filas nuevas)
+    if (action === 'addIncome') {
+      const lastRow = sheet.getLastRow();
+      const targetRow = lastRow + 1;
+      
+      sheet.getRange(targetRow, 6).setValue(contents.name);  // Columna F: Concepto Ingreso
+      sheet.getRange(targetRow, 7).setValue(contents.amount); // Columna G: Monto Ingreso
+      
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', row: targetRow }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 3. Sobrescribir / Actualizar un gasto existente por inflación
+    if (action === 'updateExpense') {
+      const data = sheet.getDataRange().getValues();
+      for (let i = 3; i < data.length; i++) {
+        if (data[i][3] && data[i][3].toString().trim().toLowerCase() === contents.name.trim().toLowerCase()) {
+          sheet.getRange(i + 1, 5).setValue(contents.amount); // Sobrescribe Columna E
+          return ContentService.createTextOutput(JSON.stringify({ status: 'updated' }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      // Si no existía el gasto en la planilla, crea la celda/fila automáticamente
+      const lastRow = sheet.getLastRow() + 1;
+      sheet.getRange(lastRow, 3).setValue('A PAGAR');
+      sheet.getRange(lastRow, 4).setValue(contents.name);
+      sheet.getRange(lastRow, 5).setValue(contents.amount);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
