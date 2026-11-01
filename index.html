@@ -1,86 +1,294 @@
-function doGet(e) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const data = sheet.getDataRange().getValues();
-  
-  let incomes = [];
-  let expenses = [];
-  
-  for (let i = 3; i < data.length; i++) {
-    const estado = data[i][2];          // Columna C: Estado (A PAGAR / PAGADO)
-    const conceptoGasto = data[i][3];  // Columna D: Gasto
-    const montoGasto = data[i][4];     // Columna E: Monto Gasto
-    
-    const conceptoIngreso = data[i][5];// Columna F: Ingreso
-    const montoIngreso = data[i][6];   // Columna G: Monto Ingreso
-    
-    if (conceptoGasto && montoGasto !== "" && montoGasto !== undefined) {
-      expenses.push({ id: i + 1, name: conceptoGasto, amount: Number(montoGasto) || 0, status: estado });
-    }
-    
-    if (conceptoIngreso && montoIngreso !== "" && montoIngreso !== undefined) {
-      incomes.push({ id: i + 1, name: conceptoIngreso, amount: Number(montoIngreso) || 0 });
-    }
-  }
-  
-  return ContentService.createTextOutput(JSON.stringify({ incomes, expenses }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mi Caja Diaria</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 pb-20">
 
-function doPost(e) {
-  try {
-    const contents = JSON.parse(e.postData.contents);
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    const action = contents.action;
-    
-    // 1. Agregar nuevo gasto (Crea celdas/filas nuevas)
-    if (action === 'addExpense') {
-      const lastRow = sheet.getLastRow();
-      const targetRow = lastRow + 1;
-      
-      // Escribe la fecha actual, estado "A PAGAR", concepto y monto en la nueva fila
-      const hoy = Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "dd-MMM-yyyy");
-      sheet.getRange(targetRow, 2).setValue(hoy);          // Columna B: Fecha
-      sheet.getRange(targetRow, 3).setValue('A PAGAR');     // Columna C: Estado
-      sheet.getRange(targetRow, 4).setValue(contents.name); // Columna D: Concepto
-      sheet.getRange(targetRow, 5).setValue(contents.amount);// Columna E: Monto
-      
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', row: targetRow }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-    
-    // 2. Agregar nuevo ingreso (Crea celdas/filas nuevas)
-    if (action === 'addIncome') {
-      const lastRow = sheet.getLastRow();
-      const targetRow = lastRow + 1;
-      
-      sheet.getRange(targetRow, 6).setValue(contents.name);  // Columna F: Concepto Ingreso
-      sheet.getRange(targetRow, 7).setValue(contents.amount); // Columna G: Monto Ingreso
-      
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', row: targetRow }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
+    <header class="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i data-lucide="wallet"></i> Mi Caja Diaria
+            </h1>
+            <div class="flex items-center gap-2">
+                <button onclick="fetchDataFromSheet()" class="p-1 hover:bg-blue-600 rounded transition" title="Sincronizar">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                </button>
+                <span id="current-date-badge" class="text-xs bg-blue-800 px-2 py-1 rounded"></span>
+            </div>
+        </div>
+    </header>
 
-    // 3. Sobrescribir / Actualizar un gasto existente por inflación
-    if (action === 'updateExpense') {
-      const data = sheet.getDataRange().getValues();
-      for (let i = 3; i < data.length; i++) {
-        if (data[i][3] && data[i][3].toString().trim().toLowerCase() === contents.name.trim().toLowerCase()) {
-          sheet.getRange(i + 1, 5).setValue(contents.amount); // Sobrescribe Columna E
-          return ContentService.createTextOutput(JSON.stringify({ status: 'updated' }))
-            .setMimeType(ContentService.MimeType.JSON);
+    <main class="max-w-md mx-auto p-4 space-y-4">
+
+        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-2xl p-5 shadow-lg">
+            <p class="text-blue-100 text-sm font-medium">Límite Diario Recomendado</p>
+            <div class="flex items-baseline gap-1 mt-1">
+                <span class="text-3xl font-extrabold">$</span>
+                <span id="daily-budget" class="text-4xl font-extrabold">0</span>
+                <span class="text-blue-200 text-sm">/día</span>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t border-blue-500/50 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                    <span class="text-blue-200">Saldo Remanente:</span>
+                    <p id="remaining-balance" class="font-semibold text-sm">$0</p>
+                </div>
+                <div>
+                    <span class="text-blue-200">Días al próximo cobro:</span>
+                    <p id="days-left" class="font-semibold text-sm">0 días</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
+                <p class="text-xs text-gray-500">Ingresos Totales</p>
+                <p id="total-income" class="text-lg font-bold text-emerald-600">$0</p>
+            </div>
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
+                <p class="text-xs text-gray-500">Gastos Planificados</p>
+                <p id="total-expenses" class="text-lg font-bold text-rose-600">$0</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Distribución Financiera</h3>
+            <div class="h-44 flex justify-center">
+                <canvas id="financeChart"></canvas>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button onclick="openModal('modal-income')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow flex items-center justify-center gap-2 text-sm">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i> Cargar Ingreso
+            </button>
+            <button onclick="openModal('modal-expense')" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-medium py-2.5 px-4 rounded-xl shadow flex items-center justify-center gap-2 text-sm">
+                <i data-lucide="minus-circle" class="w-4 h-4"></i> Cargar Gasto
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="flex border-b border-gray-200">
+                <button onclick="switchTab('expenses')" id="tab-expenses" class="flex-1 py-3 text-center font-medium text-sm border-b-2 border-blue-600 text-blue-600">Gastos Mensuales</button>
+                <button onclick="switchTab('incomes')" id="tab-incomes" class="flex-1 py-3 text-center font-medium text-sm text-gray-500">Ingresos</button>
+            </div>
+            <div id="list-container" class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                <div class="p-4 text-center text-gray-400 text-sm">Cargando datos de Google Sheets...</div>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="modal-income" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4">
+            <h3 class="text-lg font-bold">Nuevo Ingreso</h3>
+            <form id="form-income" onsubmit="saveIncome(event)" class="space-y-3">
+                <div>
+                    <label class="text-xs font-medium text-gray-600">Concepto</label>
+                    <input type="text" id="inc-name" required class="w-full mt-1 p-2 border rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-600">Monto ($)</label>
+                    <input type="number" id="inc-amount" step="any" required class="w-full mt-1 p-2 border rounded-lg text-sm">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeModal('modal-income')" class="px-4 py-2 text-sm text-gray-500">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg font-medium">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-expense" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4">
+            <h3 class="text-lg font-bold">Nuevo / Actualizar Gasto</h3>
+            <form id="form-expense" onsubmit="saveExpense(event)" class="space-y-3">
+                <div>
+                    <label class="text-xs font-medium text-gray-600">Concepto (ej: Luz La Plata, Camuzzi)</label>
+                    <input type="text" id="exp-name" required class="w-full mt-1 p-2 border rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-600">Monto ($)</label>
+                    <input type="number" id="exp-amount" step="any" required class="w-full mt-1 p-2 border rounded-lg text-sm">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeModal('modal-expense')" class="px-4 py-2 text-sm text-gray-500">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg font-medium">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVFvBAtLedceGTBfVDsFvYOtnN5cg27rkJR5QzOGsxwVeQE3ITOilyemAGc0JeumUPvQ/exec';
+
+        let state = { incomes: [], expenses: [] };
+        let currentTab = 'expenses';
+        let chartInstance = null;
+
+        function getLastBusinessDay(year, month) {
+            let date = new Date(year, month + 1, 0);
+            let day = date.getDay();
+            if (day === 6) date.setDate(date.getDate() - 1);
+            if (day === 0) date.setDate(date.getDate() - 2);
+            return date;
         }
-      }
-      // Si no existía el gasto en la planilla, crea la celda/fila automáticamente
-      const lastRow = sheet.getLastRow() + 1;
-      sheet.getRange(lastRow, 3).setValue('A PAGAR');
-      sheet.getRange(lastRow, 4).setValue(contents.name);
-      sheet.getRange(lastRow, 5).setValue(contents.amount);
-    }
-    
-    return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
+
+        function getDaysUntilNextPayday() {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            let payday = getLastBusinessDay(today.getFullYear(), today.getMonth());
+            payday.setHours(0, 0, 0, 0);
+
+            if (today > payday) {
+                payday = getLastBusinessDay(today.getFullYear(), today.getMonth() + 1);
+                payday.setHours(0, 0, 0, 0);
+            }
+
+            const diffTime = payday - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays === 0 ? 1 : diffDays;
+        }
+
+        async function fetchDataFromSheet() {
+            try {
+                const res = await fetch(SCRIPT_URL);
+                const data = await res.json();
+                state.incomes = data.incomes || [];
+                state.expenses = data.expenses || [];
+                render();
+            } catch (err) {
+                console.error("Error al obtener datos:", err);
+            }
+        }
+
+        function renderChart(expensesTotal, remainingBalance) {
+            const ctx = document.getElementById('financeChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Gastos Totales', 'Saldo Remanente'],
+                    datasets: [{
+                        data: [expensesTotal, Math.max(0, remainingBalance)],
+                        backgroundColor: ['#e11d48', '#059669'],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        function render() {
+            lucide.createIcons();
+            
+            const totalIncome = state.incomes.reduce((acc, cur) => acc + Number(cur.amount), 0);
+            const totalExpenses = state.expenses.reduce((acc, cur) => acc + Number(cur.amount), 0);
+            const remainingBalance = totalIncome - totalExpenses;
+            const daysLeft = getDaysUntilNextPayday();
+            const dailyBudget = remainingBalance > 0 ? (remainingBalance / daysLeft) : 0;
+
+            document.getElementById('total-income').innerText = '$' + totalIncome.toLocaleString('es-AR');
+            document.getElementById('total-expenses').innerText = '$' + totalExpenses.toLocaleString('es-AR');
+            document.getElementById('remaining-balance').innerText = '$' + remainingBalance.toLocaleString('es-AR');
+            document.getElementById('days-left').innerText = daysLeft + ' días';
+            document.getElementById('daily-budget').innerText = Math.floor(dailyBudget).toLocaleString('es-AR');
+
+            const options = { weekday: 'short', day: 'numeric', month: 'short' };
+            document.getElementById('current-date-badge').innerText = new Date().toLocaleDateString('es-AR', options);
+
+            renderChart(totalExpenses, remainingBalance);
+            renderList();
+        }
+
+        function renderList() {
+            const container = document.getElementById('list-container');
+            container.innerHTML = '';
+
+            const items = currentTab === 'expenses' ? state.expenses : state.incomes;
+
+            if (items.length === 0) {
+                container.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">No hay registros cargados.</div>`;
+                return;
+            }
+
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'p-3 flex justify-between items-center hover:bg-gray-50';
+                div.innerHTML = `
+                    <div>
+                        <p class="font-medium text-sm text-gray-800">${item.name}</p>
+                        <p class="text-xs text-gray-400">$${Number(item.amount).toLocaleString('es-AR')}</p>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            lucide.createIcons();
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('tab-expenses').className = tab === 'expenses' 
+                ? 'flex-1 py-3 text-center font-medium text-sm border-b-2 border-blue-600 text-blue-600'
+                : 'flex-1 py-3 text-center font-medium text-sm text-gray-500';
+            document.getElementById('tab-incomes').className = tab === 'incomes' 
+                ? 'flex-1 py-3 text-center font-medium text-sm border-b-2 border-blue-600 text-blue-600'
+                : 'flex-1 py-3 text-center font-medium text-sm text-gray-500';
+            renderList();
+        }
+
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); document.getElementById(id).classList.add('flex'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
+
+        async function saveIncome(e) {
+            e.preventDefault();
+            const name = document.getElementById('inc-name').value;
+            const amount = parseFloat(document.getElementById('inc-amount').value);
+            closeModal('modal-income');
+
+            await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'addIncome', name, amount })
+            });
+
+            document.getElementById('form-income').reset();
+            setTimeout(fetchDataFromSheet, 1500);
+        }
+
+        async function saveExpense(e) {
+            e.preventDefault();
+            const name = document.getElementById('exp-name').value;
+            const amount = parseFloat(document.getElementById('exp-amount').value);
+            closeModal('modal-expense');
+
+            await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'updateExpense', name, amount })
+            });
+
+            document.getElementById('form-expense').reset();
+            setTimeout(fetchDataFromSheet, 1500);
+        }
+
+        fetchDataFromSheet();
+    </script>
+</body>
+</html>
