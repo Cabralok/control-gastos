@@ -3,31 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mi Caja Diaria</title>
+    <title>Mi Control Financiero</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-gray-100 text-gray-800 pb-20">
 
+    <!-- Header -->
     <header class="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10">
         <div class="max-w-md mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold flex items-center gap-2">
-                <i data-lucide="wallet"></i> Mi Caja Diaria
+            <h1 class="text-lg font-bold flex items-center gap-2">
+                <i data-lucide="wallet"></i> Mi Control Diario
             </h1>
             <div class="flex items-center gap-2">
-                <button onclick="fetchDataFromSheet()" class="p-1 hover:bg-blue-600 rounded transition" title="Sincronizar">
+                <button onclick="fetchDataFromSheet()" class="p-1.5 bg-blue-800 hover:bg-blue-600 rounded-lg transition" title="Actualizar datos">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                 </button>
-                <span id="current-date-badge" class="text-xs bg-blue-800 px-2 py-1 rounded"></span>
+                <span id="current-date-badge" class="text-xs bg-blue-900 px-2.5 py-1 rounded-lg"></span>
             </div>
         </div>
     </header>
 
     <main class="max-w-md mx-auto p-4 space-y-4">
 
+        <!-- Límite Diario -->
         <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-2xl p-5 shadow-lg">
-            <p class="text-blue-100 text-sm font-medium">Límite Diario Recomendado</p>
+            <p class="text-blue-100 text-xs font-semibold uppercase tracking-wider">Límite Diario Recomendado</p>
             <div class="flex items-baseline gap-1 mt-1">
                 <span class="text-3xl font-extrabold">$</span>
                 <span id="daily-budget" class="text-4xl font-extrabold">0</span>
@@ -37,100 +38,45 @@
             <div class="mt-4 pt-3 border-t border-blue-500/50 grid grid-cols-2 gap-2 text-xs">
                 <div>
                     <span class="text-blue-200">Saldo Remanente:</span>
-                    <p id="remaining-balance" class="font-semibold text-sm">$0</p>
+                    <p id="remaining-balance" class="font-bold text-base text-white">$0</p>
                 </div>
                 <div>
-                    <span class="text-blue-200">Días al próximo cobro:</span>
-                    <p id="days-left" class="font-semibold text-sm">0 días</p>
+                    <span class="text-blue-200">Días al cobro:</span>
+                    <p id="days-left" class="font-bold text-base text-white">0 días</p>
                 </div>
             </div>
         </div>
 
+        <!-- Totales -->
         <div class="grid grid-cols-2 gap-3">
             <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
-                <p class="text-xs text-gray-500">Ingresos Totales</p>
+                <p class="text-xs text-gray-500 font-medium">Activos (Ingresos)</p>
                 <p id="total-income" class="text-lg font-bold text-emerald-600">$0</p>
             </div>
             <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
-                <p class="text-xs text-gray-500">Gastos Planificados</p>
+                <p class="text-xs text-gray-500 font-medium">Pasivos (Gastos)</p>
                 <p id="total-expenses" class="text-lg font-bold text-rose-600">$0</p>
             </div>
         </div>
 
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Distribución Financiera</h3>
-            <div class="h-44 flex justify-center">
-                <canvas id="financeChart"></canvas>
-            </div>
-        </div>
-
-        <div class="flex gap-2">
-            <button onclick="openModal('modal-income')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow flex items-center justify-center gap-2 text-sm">
-                <i data-lucide="plus-circle" class="w-4 h-4"></i> Cargar Ingreso
-            </button>
-            <button onclick="openModal('modal-expense')" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-medium py-2.5 px-4 rounded-xl shadow flex items-center justify-center gap-2 text-sm">
-                <i data-lucide="minus-circle" class="w-4 h-4"></i> Cargar Gasto
-            </button>
-        </div>
-
+        <!-- Pestañas e Items Editables -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div class="flex border-b border-gray-200">
-                <button onclick="switchTab('expenses')" id="tab-expenses" class="flex-1 py-3 text-center font-medium text-sm border-b-2 border-blue-600 text-blue-600">Gastos Mensuales</button>
-                <button onclick="switchTab('incomes')" id="tab-incomes" class="flex-1 py-3 text-center font-medium text-sm text-gray-500">Ingresos</button>
+            <div class="flex border-b border-gray-200 bg-gray-50">
+                <button onclick="switchTab('expenses')" id="tab-expenses" class="flex-1 py-3 text-center font-bold text-xs border-b-2 border-blue-600 text-blue-600 uppercase tracking-wider">Pasivos (Gastos)</button>
+                <button onclick="switchTab('incomes')" id="tab-incomes" class="flex-1 py-3 text-center font-bold text-xs text-gray-500 uppercase tracking-wider">Activos (Ingresos)</button>
             </div>
-            <div id="list-container" class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
-                <div class="p-4 text-center text-gray-400 text-sm">Cargando datos de Google Sheets...</div>
+            <div id="list-container" class="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+                <div class="p-5 text-center text-gray-400 text-sm">Sincronizando con Excel...</div>
             </div>
         </div>
 
     </main>
-
-    <div id="modal-income" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4">
-            <h3 class="text-lg font-bold">Nuevo Ingreso</h3>
-            <form id="form-income" onsubmit="saveIncome(event)" class="space-y-3">
-                <div>
-                    <label class="text-xs font-medium text-gray-600">Concepto</label>
-                    <input type="text" id="inc-name" required class="w-full mt-1 p-2 border rounded-lg text-sm">
-                </div>
-                <div>
-                    <label class="text-xs font-medium text-gray-600">Monto ($)</label>
-                    <input type="number" id="inc-amount" step="any" required class="w-full mt-1 p-2 border rounded-lg text-sm">
-                </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="closeModal('modal-income')" class="px-4 py-2 text-sm text-gray-500">Cancelar</button>
-                    <button type="submit" class="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg font-medium">Guardar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div id="modal-expense" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4">
-            <h3 class="text-lg font-bold">Nuevo / Actualizar Gasto</h3>
-            <form id="form-expense" onsubmit="saveExpense(event)" class="space-y-3">
-                <div>
-                    <label class="text-xs font-medium text-gray-600">Concepto (ej: Luz La Plata, Camuzzi)</label>
-                    <input type="text" id="exp-name" required class="w-full mt-1 p-2 border rounded-lg text-sm">
-                </div>
-                <div>
-                    <label class="text-xs font-medium text-gray-600">Monto ($)</label>
-                    <input type="number" id="exp-amount" step="any" required class="w-full mt-1 p-2 border rounded-lg text-sm">
-                </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="closeModal('modal-expense')" class="px-4 py-2 text-sm text-gray-500">Cancelar</button>
-                    <button type="submit" class="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg font-medium">Guardar</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     <script>
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVFvBAtLedceGTBfVDsFvYOtnN5cg27rkJR5QzOGsxwVeQE3ITOilyemAGc0JeumUPvQ/exec';
 
         let state = { incomes: [], expenses: [] };
         let currentTab = 'expenses';
-        let chartInstance = null;
 
         function getLastBusinessDay(year, month) {
             let date = new Date(year, month + 1, 0);
@@ -169,30 +115,6 @@
             }
         }
 
-        function renderChart(expensesTotal, remainingBalance) {
-            const ctx = document.getElementById('financeChart').getContext('2d');
-            if (chartInstance) chartInstance.destroy();
-
-            chartInstance = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Gastos Totales', 'Saldo Remanente'],
-                    datasets: [{
-                        data: [expensesTotal, Math.max(0, remainingBalance)],
-                        backgroundColor: ['#e11d48', '#059669'],
-                        borderWidth: 2,
-                        borderColor: '#ffffff'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom' } },
-                    cutout: '70%'
-                }
-            });
-        }
-
         function render() {
             lucide.createIcons();
             
@@ -211,7 +133,6 @@
             const options = { weekday: 'short', day: 'numeric', month: 'short' };
             document.getElementById('current-date-badge').innerText = new Date().toLocaleDateString('es-AR', options);
 
-            renderChart(totalExpenses, remainingBalance);
             renderList();
         }
 
@@ -222,17 +143,33 @@
             const items = currentTab === 'expenses' ? state.expenses : state.incomes;
 
             if (items.length === 0) {
-                container.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">No hay registros cargados.</div>`;
+                container.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">No hay datos.</div>`;
                 return;
             }
 
             items.forEach(item => {
                 const div = document.createElement('div');
-                div.className = 'p-3 flex justify-between items-center hover:bg-gray-50';
+                div.className = 'p-3 flex justify-between items-center hover:bg-gray-50 gap-3';
                 div.innerHTML = `
-                    <div>
-                        <p class="font-medium text-sm text-gray-800">${item.name}</p>
-                        <p class="text-xs text-gray-400">$${Number(item.amount).toLocaleString('es-AR')}</p>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-sm text-gray-800 truncate">${item.name}</p>
+                        ${item.status ? `<span class="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium ${item.status === 'PAGADO' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'}">${item.status}</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="relative rounded-lg shadow-sm">
+                            <span class="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 text-xs">$</span>
+                            <input 
+                                type="number" 
+                                value="${item.amount}" 
+                                onblur="updateItemAmount('${currentTab}', ${item.rowIndex}, this.value, ${item.amount})"
+                                class="w-28 pl-5 pr-2 py-1 text-right text-sm font-semibold border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-gray-800 bg-white"
+                            />
+                        </div>
+                        ${currentTab === 'expenses' && item.amount > 0 ? `
+                            <button onclick="setItemToZero(${item.rowIndex})" class="text-xs bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold px-2 py-1.5 rounded-lg border border-rose-200 transition" title="Marcar como $0">
+                                $0
+                            </button>
+                        ` : ''}
                     </div>
                 `;
                 container.appendChild(div);
@@ -240,52 +177,43 @@
             lucide.createIcons();
         }
 
+        async function updateItemAmount(type, rowIndex, newValue, oldValue) {
+            const numVal = parseFloat(newValue) || 0;
+            if (numVal === oldValue) return; // Si no cambió el número, no hace nada
+
+            // Actualizamos la pantalla de inmediato para respuesta instantánea
+            if (type === 'expenses') {
+                const item = state.expenses.find(e => e.rowIndex === rowIndex);
+                if (item) item.amount = numVal;
+            } else {
+                const item = state.incomes.find(i => i.rowIndex === rowIndex);
+                if (item) item.amount = numVal;
+            }
+            render();
+
+            // Enviamos el cambio a Google Sheet
+            const action = type === 'expenses' ? 'updateExpenseAmount' : 'updateIncomeAmount';
+            await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, rowIndex, amount: numVal })
+            });
+        }
+
+        async function setItemToZero(rowIndex) {
+            await updateItemAmount('expenses', rowIndex, 0, -1);
+        }
+
         function switchTab(tab) {
             currentTab = tab;
             document.getElementById('tab-expenses').className = tab === 'expenses' 
-                ? 'flex-1 py-3 text-center font-medium text-sm border-b-2 border-blue-600 text-blue-600'
-                : 'flex-1 py-3 text-center font-medium text-sm text-gray-500';
+                ? 'flex-1 py-3 text-center font-bold text-xs border-b-2 border-blue-600 text-blue-600 uppercase tracking-wider'
+                : 'flex-1 py-3 text-center font-bold text-xs text-gray-500 uppercase tracking-wider';
             document.getElementById('tab-incomes').className = tab === 'incomes' 
-                ? 'flex-1 py-3 text-center font-medium text-sm border-b-2 border-blue-600 text-blue-600'
-                : 'flex-1 py-3 text-center font-medium text-sm text-gray-500';
+                ? 'flex-1 py-3 text-center font-bold text-xs border-b-2 border-blue-600 text-blue-600 uppercase tracking-wider'
+                : 'flex-1 py-3 text-center font-bold text-xs text-gray-500 uppercase tracking-wider';
             renderList();
-        }
-
-        function openModal(id) { document.getElementById(id).classList.remove('hidden'); document.getElementById(id).classList.add('flex'); }
-        function closeModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
-
-        async function saveIncome(e) {
-            e.preventDefault();
-            const name = document.getElementById('inc-name').value;
-            const amount = parseFloat(document.getElementById('inc-amount').value);
-            closeModal('modal-income');
-
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'addIncome', name, amount })
-            });
-
-            document.getElementById('form-income').reset();
-            setTimeout(fetchDataFromSheet, 1500);
-        }
-
-        async function saveExpense(e) {
-            e.preventDefault();
-            const name = document.getElementById('exp-name').value;
-            const amount = parseFloat(document.getElementById('exp-amount').value);
-            closeModal('modal-expense');
-
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'updateExpense', name, amount })
-            });
-
-            document.getElementById('form-expense').reset();
-            setTimeout(fetchDataFromSheet, 1500);
         }
 
         fetchDataFromSheet();
