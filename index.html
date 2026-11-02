@@ -1,222 +1,74 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mi Control Financiero</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
-</head>
-<body class="bg-gray-100 text-gray-800 pb-20">
+function doGet(e) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const data = sheet.getDataRange().getValues();
+  
+  let incomes = [];
+  let expenses = [];
+  
+  for (let i = 3; i < data.length; i++) {
+    const rowNumber = i + 1; // Número real de fila en Google Sheets
+    const estado = data[i][2];          // Columna C
+    const conceptoGasto = data[i][3];  // Columna D
+    const montoGasto = data[i][4];     // Columna E
+    
+    const conceptoIngreso = data[i][5];// Columna F
+    const montoIngreso = data[i][6];   // Columna G
+    
+    if (conceptoGasto && conceptoGasto.toString().trim().toLowerCase() !== 'total' && montoGasto !== "" && montoGasto !== undefined) {
+      expenses.push({ 
+        id: 'exp_' + rowNumber, 
+        name: conceptoGasto.toString().trim(), 
+        amount: Number(montoGasto) || 0, 
+        status: estado, 
+        sheetRow: rowNumber 
+      });
+    }
+    
+    if (conceptoIngreso && conceptoIngreso.toString().trim().toLowerCase() !== 'total' && montoIngreso !== "" && montoIngreso !== undefined) {
+      incomes.push({ 
+        id: 'inc_' + rowNumber, 
+        name: conceptoIngreso.toString().trim(), 
+        amount: Number(montoIngreso) || 0, 
+        sheetRow: rowNumber 
+      });
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({ incomes, expenses }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
-    <!-- Header -->
-    <header class="bg-blue-700 text-white p-4 shadow-md sticky top-0 z-10">
-        <div class="max-w-md mx-auto flex justify-between items-center">
-            <h1 class="text-lg font-bold flex items-center gap-2">
-                <i data-lucide="wallet"></i> Mi Control Diario
-            </h1>
-            <div class="flex items-center gap-2">
-                <button onclick="fetchDataFromSheet()" class="p-1.5 bg-blue-800 hover:bg-blue-600 rounded-lg transition" title="Actualizar datos">
-                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                </button>
-                <span id="current-date-badge" class="text-xs bg-blue-900 px-2.5 py-1 rounded-lg"></span>
-            </div>
-        </div>
-    </header>
+function doPost(e) {
+  try {
+    const contents = JSON.parse(e.postData.contents);
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const action = contents.action;
+    const targetRow = Number(contents.sheetRow);
+    const newAmount = Number(contents.amount) || 0;
+    
+    if (!targetRow || targetRow < 4) {
+      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Fila inválida' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Actualizar Gasto (Columna E)
+    if (action === 'updateExpenseAmount') {
+      sheet.getRange(targetRow, 5).setValue(newAmount);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
-    <main class="max-w-md mx-auto p-4 space-y-4">
-
-        <!-- Límite Diario -->
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-2xl p-5 shadow-lg">
-            <p class="text-blue-100 text-xs font-semibold uppercase tracking-wider">Límite Diario Recomendado</p>
-            <div class="flex items-baseline gap-1 mt-1">
-                <span class="text-3xl font-extrabold">$</span>
-                <span id="daily-budget" class="text-4xl font-extrabold">0</span>
-                <span class="text-blue-200 text-sm">/día</span>
-            </div>
-            
-            <div class="mt-4 pt-3 border-t border-blue-500/50 grid grid-cols-2 gap-2 text-xs">
-                <div>
-                    <span class="text-blue-200">Saldo Remanente:</span>
-                    <p id="remaining-balance" class="font-bold text-base text-white">$0</p>
-                </div>
-                <div>
-                    <span class="text-blue-200">Días al cobro:</span>
-                    <p id="days-left" class="font-bold text-base text-white">0 días</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Totales -->
-        <div class="grid grid-cols-2 gap-3">
-            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
-                <p class="text-xs text-gray-500 font-medium">Activos (Ingresos)</p>
-                <p id="total-income" class="text-lg font-bold text-emerald-600">$0</p>
-            </div>
-            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
-                <p class="text-xs text-gray-500 font-medium">Pasivos (Gastos)</p>
-                <p id="total-expenses" class="text-lg font-bold text-rose-600">$0</p>
-            </div>
-        </div>
-
-        <!-- Pestañas e Items Editables -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div class="flex border-b border-gray-200 bg-gray-50">
-                <button onclick="switchTab('expenses')" id="tab-expenses" class="flex-1 py-3 text-center font-bold text-xs border-b-2 border-blue-600 text-blue-600 uppercase tracking-wider">Pasivos (Gastos)</button>
-                <button onclick="switchTab('incomes')" id="tab-incomes" class="flex-1 py-3 text-center font-bold text-xs text-gray-500 uppercase tracking-wider">Activos (Ingresos)</button>
-            </div>
-            <div id="list-container" class="divide-y divide-gray-100 max-h-96 overflow-y-auto">
-                <div class="p-5 text-center text-gray-400 text-sm">Sincronizando con Excel...</div>
-            </div>
-        </div>
-
-    </main>
-
-    <script>
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVFvBAtLedceGTBfVDsFvYOtnN5cg27rkJR5QzOGsxwVeQE3ITOilyemAGc0JeumUPvQ/exec';
-
-        let state = { incomes: [], expenses: [] };
-        let currentTab = 'expenses';
-
-        function getLastBusinessDay(year, month) {
-            let date = new Date(year, month + 1, 0);
-            let day = date.getDay();
-            if (day === 6) date.setDate(date.getDate() - 1);
-            if (day === 0) date.setDate(date.getDate() - 2);
-            return date;
-        }
-
-        function getDaysUntilNextPayday() {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            
-            let payday = getLastBusinessDay(today.getFullYear(), today.getMonth());
-            payday.setHours(0, 0, 0, 0);
-
-            if (today > payday) {
-                payday = getLastBusinessDay(today.getFullYear(), today.getMonth() + 1);
-                payday.setHours(0, 0, 0, 0);
-            }
-
-            const diffTime = payday - today;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays === 0 ? 1 : diffDays;
-        }
-
-        async function fetchDataFromSheet() {
-            try {
-                const res = await fetch(SCRIPT_URL);
-                const data = await res.json();
-                state.incomes = data.incomes || [];
-                state.expenses = data.expenses || [];
-                render();
-            } catch (err) {
-                console.error("Error al obtener datos:", err);
-            }
-        }
-
-        function render() {
-            lucide.createIcons();
-            
-            const totalIncome = state.incomes.reduce((acc, cur) => acc + Number(cur.amount), 0);
-            const totalExpenses = state.expenses.reduce((acc, cur) => acc + Number(cur.amount), 0);
-            const remainingBalance = totalIncome - totalExpenses;
-            const daysLeft = getDaysUntilNextPayday();
-            const dailyBudget = remainingBalance > 0 ? (remainingBalance / daysLeft) : 0;
-
-            document.getElementById('total-income').innerText = '$' + totalIncome.toLocaleString('es-AR');
-            document.getElementById('total-expenses').innerText = '$' + totalExpenses.toLocaleString('es-AR');
-            document.getElementById('remaining-balance').innerText = '$' + remainingBalance.toLocaleString('es-AR');
-            document.getElementById('days-left').innerText = daysLeft + ' días';
-            document.getElementById('daily-budget').innerText = Math.floor(dailyBudget).toLocaleString('es-AR');
-
-            const options = { weekday: 'short', day: 'numeric', month: 'short' };
-            document.getElementById('current-date-badge').innerText = new Date().toLocaleDateString('es-AR', options);
-
-            renderList();
-        }
-
-        function renderList() {
-            const container = document.getElementById('list-container');
-            container.innerHTML = '';
-
-            const items = currentTab === 'expenses' ? state.expenses : state.incomes;
-
-            if (items.length === 0) {
-                container.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">No hay datos.</div>`;
-                return;
-            }
-
-            items.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'p-3 flex justify-between items-center hover:bg-gray-50 gap-3';
-                div.innerHTML = `
-                    <div class="flex-1 min-w-0">
-                        <p class="font-semibold text-sm text-gray-800 truncate">${item.name}</p>
-                        ${item.status ? `<span class="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium ${item.status === 'PAGADO' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'}">${item.status}</span>` : ''}
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div class="relative rounded-lg shadow-sm">
-                            <span class="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 text-xs">$</span>
-                            <input 
-                                type="number" 
-                                value="${item.amount}" 
-                                onblur="updateItemAmount('${currentTab}', ${item.rowIndex}, this.value, ${item.amount})"
-                                class="w-28 pl-5 pr-2 py-1 text-right text-sm font-semibold border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-gray-800 bg-white"
-                            />
-                        </div>
-                        ${currentTab === 'expenses' && item.amount > 0 ? `
-                            <button onclick="setItemToZero(${item.rowIndex})" class="text-xs bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold px-2 py-1.5 rounded-lg border border-rose-200 transition" title="Marcar como $0">
-                                $0
-                            </button>
-                        ` : ''}
-                    </div>
-                `;
-                container.appendChild(div);
-            });
-            lucide.createIcons();
-        }
-
-        async function updateItemAmount(type, rowIndex, newValue, oldValue) {
-            const numVal = parseFloat(newValue) || 0;
-            if (numVal === oldValue) return; // Si no cambió el número, no hace nada
-
-            // Actualizamos la pantalla de inmediato para respuesta instantánea
-            if (type === 'expenses') {
-                const item = state.expenses.find(e => e.rowIndex === rowIndex);
-                if (item) item.amount = numVal;
-            } else {
-                const item = state.incomes.find(i => i.rowIndex === rowIndex);
-                if (item) item.amount = numVal;
-            }
-            render();
-
-            // Enviamos el cambio a Google Sheet
-            const action = type === 'expenses' ? 'updateExpenseAmount' : 'updateIncomeAmount';
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, rowIndex, amount: numVal })
-            });
-        }
-
-        async function setItemToZero(rowIndex) {
-            await updateItemAmount('expenses', rowIndex, 0, -1);
-        }
-
-        function switchTab(tab) {
-            currentTab = tab;
-            document.getElementById('tab-expenses').className = tab === 'expenses' 
-                ? 'flex-1 py-3 text-center font-bold text-xs border-b-2 border-blue-600 text-blue-600 uppercase tracking-wider'
-                : 'flex-1 py-3 text-center font-bold text-xs text-gray-500 uppercase tracking-wider';
-            document.getElementById('tab-incomes').className = tab === 'incomes' 
-                ? 'flex-1 py-3 text-center font-bold text-xs border-b-2 border-blue-600 text-blue-600 uppercase tracking-wider'
-                : 'flex-1 py-3 text-center font-bold text-xs text-gray-500 uppercase tracking-wider';
-            renderList();
-        }
-
-        fetchDataFromSheet();
-    </script>
-</body>
-</html>
+    // Actualizar Ingreso (Columna G)
+    if (action === 'updateIncomeAmount') {
+      sheet.getRange(targetRow, 7).setValue(newAmount);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
